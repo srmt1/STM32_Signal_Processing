@@ -54,12 +54,12 @@ volatile uint32_t main_counter = 0;
 volatile uint32_t adc_value = 0;
 volatile uint32_t adc_millivolts = 0;
 
-#define ADC_BUFFER_SIZE 1024
+#define ADC_BUFFER_SIZE 2048
 uint16_t adc_buffer[ADC_BUFFER_SIZE];
 volatile uint8_t adc_half_ready = 0;
 volatile uint8_t adc_full_ready = 0;
-
-volatile uint32_t dma_complete_count = 0;
+volatile uint8_t adc_half_count = 0;
+volatile uint8_t adc_full_count = 0;
 
 /* CMSIS-DSP FFT */
 #define FFT_SIZE 1024
@@ -151,53 +151,64 @@ int main(void)
   {
     /* USER CODE END WHILE */
 	  main_counter++;
-	  if (adc_full_ready)
+
+	  /* Process the first half of the DMA buffer. */
+	  if (adc_half_ready)
+	  {
+		  adc_half_ready = 0;
+		  /* Copy first half */
+		  for (uint32_t i = 0; i < FFT_SIZE; i++)
+		  {
+		      fft_input[i] = (float32_t)adc_buffer[i];
+		  }
+
+	      /* Process the samples. */
+	      ProcessFFT();
+
+	      /* Transmit the measured frequency over UART. */
+	      char uart_message[64];
+
+	      int length = snprintf(uart_message, sizeof(uart_message),
+	                            "Frequency: %.1f Hz\r\n",
+	                            (double)fft_peak_frequency);
+
+	      if (length > 0 && length < sizeof(uart_message))
 	      {
-	          /* Stop further ADC triggers. */
-	          HAL_TIM_Base_Stop(&htim2);
-
-	          adc_full_ready = 0;
-
-	          /* Stop ADC and DMA. */
-	          HAL_ADC_Stop_DMA(&hadc1);
-
-	          /* Copy the complete ADC buffer into the FFT input. */
-	          for (uint32_t i = 0; i < FFT_SIZE; i++)
-	          {
-	              fft_input[i] = (float32_t)adc_buffer[i];
-	          }
-
-	          /* Process the 1024 samples. */
-	          ProcessFFT();
-
-	          /* Transmit the measured frequency over UART. */
-	          char uart_message[64];
-
-	          int length = snprintf(uart_message, sizeof(uart_message),
-	                                "Frequency: %.1f Hz\r\n",
-	                                (double)fft_peak_frequency);
-
-	          if (length > 0 && length < sizeof(uart_message))
-	          {
-	              HAL_UART_Transmit(&huart2,
-	                                (uint8_t *)uart_message,
-	                                (uint16_t)length,
-	                                HAL_MAX_DELAY);
-	          }
-
-	          /* Start the next acquisition. */
-	          if (HAL_ADC_Start_DMA(&hadc1,
-	                                (uint32_t *)adc_buffer,
-	                                ADC_BUFFER_SIZE) != HAL_OK)
-	          {
-	              Error_Handler();
-	          }
-
-	          if (HAL_TIM_Base_Start(&htim2) != HAL_OK)
-	          {
-	              Error_Handler();
-	          }
+	          HAL_UART_Transmit(&huart2,
+	                            (uint8_t *)uart_message,
+	                            (uint16_t)length,
+	                            HAL_MAX_DELAY);
 	      }
+	  }
+
+	  /* Process the second half of the DMA buffer. */
+	  if (adc_full_ready)
+	  {
+		  adc_full_ready = 0;
+		  /* Copy second half */
+		  for (uint32_t i = 0; i < FFT_SIZE; i++)
+		  {
+		      fft_input[i] = (float32_t)adc_buffer[i + FFT_SIZE];
+		  }
+
+	      /* Process the samples. */
+	      ProcessFFT();
+
+	      /* Transmit the measured frequency over UART. */
+	      char uart_message[64];
+
+	      int length = snprintf(uart_message, sizeof(uart_message),
+	                            "Frequency: %.1f Hz\r\n",
+	                            (double)fft_peak_frequency);
+
+	      if (length > 0 && length < sizeof(uart_message))
+	      {
+	          HAL_UART_Transmit(&huart2,
+	                            (uint8_t *)uart_message,
+	                            (uint16_t)length,
+	                            HAL_MAX_DELAY);
+	      }
+	  }
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -442,6 +453,7 @@ void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef *hadc)
     if (hadc->Instance == ADC1)
     {
         adc_half_ready = 1;
+        adc_half_count++;
     }
 }
 
@@ -450,7 +462,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
     if (hadc->Instance == ADC1)
     {
         adc_full_ready = 1;
-        dma_complete_count++;
+        adc_full_count++;
     }
 }
 
