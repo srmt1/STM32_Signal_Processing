@@ -1,0 +1,14 @@
+# STM32CubeIDE generated build output
+Debug/
+Release/
+
+# Compiled output
+*.elf
+*.hex
+*.bin
+*.map
+*.list
+
+# Temporary editor and operating-system files
+*~
+.DS_Store
