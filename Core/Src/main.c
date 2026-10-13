@@ -65,6 +65,7 @@ const osThreadAttr_t uartTask_attributes = {
 };
 /* Definitions for fftTask */
 osThreadId_t fftTaskHandle;
+TaskHandle_t fftTaskNativeHandle;
 const osThreadAttr_t fftTask_attributes = {
   .name = "fftTask",
   .stack_size = 1024 * 4,
@@ -188,28 +189,6 @@ int main(void)
       dac_buffer[i] = (uint16_t)(1241.0f + 1241.0f * sinf(angle));
   }
 
-  if (HAL_DAC_Start_DMA(&hdac,
-                        DAC_CHANNEL_1,
-                        (uint32_t *)dac_buffer,
-                        DAC_BUFFER_SIZE,
-                        DAC_ALIGN_12B_R) != HAL_OK)
-  {
-      Error_Handler();
-  }
-
-  HAL_ADC_Start_DMA(&hadc1, (uint32_t *)adc_buffer, ADC_BUFFER_SIZE);
-  HAL_TIM_Base_Start(&htim2);
-
-  if (HAL_TIM_Base_Start(&htim6) != HAL_OK)
-  {
-      Error_Handler();
-  }
-
-  if (HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1) != HAL_OK)
-  {
-      Error_Handler();
-  }
-  HAL_Delay(1000);
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -241,6 +220,7 @@ int main(void)
 
   /* creation of fftTask */
   fftTaskHandle = osThreadNew(StartTask02, NULL, &fftTask_attributes);
+  fftTaskNativeHandle = (TaskHandle_t)fftTaskHandle;
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -637,6 +617,15 @@ void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef *hadc)
     {
         adc_half_ready = 1;
         adc_half_count++;
+
+        BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+
+        vTaskNotifyGiveFromISR(
+            fftTaskNativeHandle,
+            &xHigherPriorityTaskWoken
+        );
+
+        portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
     }
 }
 
@@ -646,6 +635,15 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
     {
         adc_full_ready = 1;
         adc_full_count++;
+
+        BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+
+        vTaskNotifyGiveFromISR(
+            fftTaskNativeHandle,
+            &xHigherPriorityTaskWoken
+        );
+
+        portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
     }
 }
 
@@ -770,9 +768,33 @@ void StartDefaultTask(void *argument)
 void StartTask02(void *argument)
 {
   /* USER CODE BEGIN StartTask02 */
+	/* Start peripherals here */
+	  if (HAL_DAC_Start_DMA(&hdac,
+	                        DAC_CHANNEL_1,
+	                        (uint32_t *)dac_buffer,
+	                        DAC_BUFFER_SIZE,
+	                        DAC_ALIGN_12B_R) != HAL_OK)
+	  {
+	      Error_Handler();
+	  }
 
+	  HAL_ADC_Start_DMA(&hadc1, (uint32_t *)adc_buffer, ADC_BUFFER_SIZE);
+	  HAL_TIM_Base_Start(&htim2);
+
+	  if (HAL_TIM_Base_Start(&htim6) != HAL_OK)
+	  {
+	      Error_Handler();
+	  }
+
+	  if (HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1) != HAL_OK)
+	  {
+	      Error_Handler();
+	  }
+	  HAL_Delay(1000);
     for (;;)
     {
+    	/* block waiting for adc dma buffer */
+    	ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         /* Process the first half of the DMA buffer. */
         if (adc_half_ready)
         {
