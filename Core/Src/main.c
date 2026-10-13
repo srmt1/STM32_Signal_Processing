@@ -648,7 +648,7 @@ void ProcessFFT(void)
     /* Convert the interpolated bin position into frequency in Hz. */
     fft_peak_bin = peak_bin;
     fft_peak_frequency =
-        ((float32_t)peak_bin + offset) * 16000.0f / (float32_t)FFT_SIZE;
+        ((float32_t)peak_bin + offset) * 16129.03f / (float32_t)FFT_SIZE;
 
     fft_complete_count++;
 }
