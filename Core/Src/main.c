@@ -26,6 +26,7 @@
 #include "arm_math.h"
 #include <stdio.h>
 #include <string.h>
+#include "queue.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -65,7 +66,7 @@ const osThreadAttr_t uartTask_attributes = {
 };
 /* Definitions for fftTask */
 osThreadId_t fftTaskHandle;
-TaskHandle_t fftTaskNativeHandle;
+TaskHandle_t fftTaskNativeHandle = NULL;
 const osThreadAttr_t fftTask_attributes = {
   .name = "fftTask",
   .stack_size = 1024 * 4,
@@ -76,6 +77,8 @@ osMessageQueueId_t frequencyQueueHandle;
 const osMessageQueueAttr_t frequencyQueue_attributes = {
   .name = "frequencyQueue"
 };
+osMessageQueueId_t adcEventQueueHandle;
+
 /* USER CODE BEGIN PV */
 volatile uint32_t main_counter = 0;
 volatile uint32_t adc_value = 0;
@@ -83,10 +86,9 @@ volatile uint32_t adc_millivolts = 0;
 
 #define ADC_BUFFER_SIZE 2048
 uint16_t adc_buffer[ADC_BUFFER_SIZE];
-volatile uint8_t adc_half_ready = 0;
-volatile uint8_t adc_full_ready = 0;
-volatile uint8_t adc_half_count = 0;
-volatile uint8_t adc_full_count = 0;
+volatile uint32_t adc_half_count = 0;
+volatile uint32_t adc_full_count = 0;
+volatile uint32_t adc_event_queue_overflow_count = 0;
 
 /* CMSIS-DSP FFT */
 #define FFT_SIZE 1024
@@ -97,6 +99,10 @@ float32_t fft_magnitude[FFT_SIZE / 2];
 float32_t hann_window[FFT_SIZE];
 
 volatile uint32_t fft_complete_count = 0;
+
+volatile uint32_t fft_half_processed_count = 0;
+volatile uint32_t fft_full_processed_count = 0;
+
 volatile uint32_t fft_peak_bin = 0;
 volatile float32_t fft_peak_frequency = 0.0f;
 uint32_t fft_sample_index = 0;
@@ -209,7 +215,11 @@ int main(void)
   /* Create the queue(s) */
   /* creation of frequencyQueue */
   frequencyQueueHandle = osMessageQueueNew (4, sizeof(float32_t), &frequencyQueue_attributes);
-
+  adcEventQueueHandle = osMessageQueueNew(
+      8,
+      sizeof(uint32_t),
+      NULL
+  );
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
   /* USER CODE END RTOS_QUEUES */
@@ -221,7 +231,6 @@ int main(void)
   /* creation of fftTask */
   fftTaskHandle = osThreadNew(StartTask02, NULL, &fftTask_attributes);
   fftTaskNativeHandle = (TaskHandle_t)fftTaskHandle;
-
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
@@ -591,6 +600,9 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_RESET);
+
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
@@ -604,6 +616,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : PB0 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
   /* USER CODE END MX_GPIO_Init_2 */
@@ -615,15 +634,18 @@ void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef *hadc)
 {
     if (hadc->Instance == ADC1)
     {
-        adc_half_ready = 1;
         adc_half_count++;
 
+        uint32_t event = 1U;
         BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
-        vTaskNotifyGiveFromISR(
-            fftTaskNativeHandle,
-            &xHigherPriorityTaskWoken
-        );
+        if (xQueueSendFromISR(
+                adcEventQueueHandle,
+                &event,
+                &xHigherPriorityTaskWoken) != pdPASS)
+        {
+            adc_event_queue_overflow_count++;
+        }
 
         portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
     }
@@ -633,15 +655,18 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
 {
     if (hadc->Instance == ADC1)
     {
-        adc_full_ready = 1;
         adc_full_count++;
 
+        uint32_t event = 2U;
         BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
-        vTaskNotifyGiveFromISR(
-            fftTaskNativeHandle,
-            &xHigherPriorityTaskWoken
-        );
+        if (xQueueSendFromISR(
+                adcEventQueueHandle,
+                &event,
+                &xHigherPriorityTaskWoken) != pdPASS)
+        {
+            adc_event_queue_overflow_count++;
+        }
 
         portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
     }
@@ -790,61 +815,71 @@ void StartTask02(void *argument)
 	  {
 	      Error_Handler();
 	  }
-	  HAL_Delay(1000);
     for (;;)
     {
-    	/* block waiting for adc dma buffer */
-    	ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-        /* Process the first half of the DMA buffer. */
-        if (adc_half_ready)
-        {
-            adc_half_ready = 0;
+    	/* Wait for the next ADC DMA event. */
+    	uint32_t event = 0;
 
-            /* Copy first half */
-            for (uint32_t i = 0; i < FFT_SIZE; i++)
-            {
-                fft_input[i] = (float32_t)adc_buffer[i];
-            }
+    	if (osMessageQueueGet(
+    	        adcEventQueueHandle,
+    	        &event,
+    	        NULL,
+    	        osWaitForever) == osOK)
+    	{
+    	    if (event == 1U)
+    	    {
+    	        /* Process the first half of the DMA buffer. */
+    	        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_SET);
 
-            /* Process the samples. */
-            ProcessFFT();
+    	        for (uint32_t i = 0; i < FFT_SIZE; i++)
+    	        {
+    	            fft_input[i] = (float32_t)adc_buffer[i];
+    	        }
 
-            /* Transmit the measured frequency over UART. */
-            float32_t frequency = fft_peak_frequency;
+    	        ProcessFFT();
 
-            osMessageQueuePut(frequencyQueueHandle,
-                              &frequency,
-                              0,
-                              0);
-        }
+    	        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_RESET);
 
-        /* Process the second half of the DMA buffer. */
-        if (adc_full_ready)
-        {
-            adc_full_ready = 0;
+    	        float32_t frequency = fft_peak_frequency;
 
-            /* Copy second half */
-            for (uint32_t i = 0; i < FFT_SIZE; i++)
-            {
-                fft_input[i] = (float32_t)adc_buffer[i + FFT_SIZE];
-            }
+    	        osMessageQueuePut(
+    	            frequencyQueueHandle,
+    	            &frequency,
+    	            0,
+    	            0
+    	        );
 
-            /* Process the samples. */
-            ProcessFFT();
+    	        fft_half_processed_count++;
+    	    }
+    	    else if (event == 2U)
+    	    {
+    	        /* Process the second half of the DMA buffer. */
+    	        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_SET);
 
-            /* Transmit the measured frequency over UART. */
-            float32_t frequency = fft_peak_frequency;
+    	        for (uint32_t i = 0; i < FFT_SIZE; i++)
+    	        {
+    	            fft_input[i] = (float32_t)adc_buffer[i + FFT_SIZE];
+    	        }
 
-            osMessageQueuePut(frequencyQueueHandle,
-                              &frequency,
-                              0,
-                              0);
-        }
+    	        ProcessFFT();
 
-        /* Allow other tasks to run. */
-        osDelay(1);
+    	        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_RESET);
+
+    	        float32_t frequency = fft_peak_frequency;
+
+    	        osMessageQueuePut(
+    	            frequencyQueueHandle,
+    	            &frequency,
+    	            0,
+    	            0
+    	        );
+
+    	        fft_full_processed_count++;
+    	    }
+    	}
+
+    	osDelay(1);
     }
-
   /* USER CODE END StartTask02 */
 }
 
