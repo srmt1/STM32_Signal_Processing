@@ -27,6 +27,8 @@
 #include <stdio.h>
 #include <string.h>
 #include "queue.h"
+#include "aht20.h"
+#include "bmp280.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -209,6 +211,57 @@ int main(void)
 
   printf("BMP280 (0x77): %s\r\n",
          (bmp280_77_status == HAL_OK) ? "FOUND" : "NOT FOUND");
+
+  HAL_StatusTypeDef aht20_init_status;
+
+  aht20_init_status = AHT20_Init(&hi2c1);
+
+  printf("AHT20 initialisation: %s\r\n",
+         (aht20_init_status == HAL_OK) ? "OK" : "FAILED");
+
+  float aht20_temperature = 0.0f;
+  float aht20_humidity = 0.0f;
+
+  HAL_StatusTypeDef aht20_read_status;
+
+  aht20_read_status = AHT20_Read(&hi2c1,
+                                 &aht20_temperature,
+                                 &aht20_humidity);
+
+  if (aht20_read_status == HAL_OK)
+  {
+      printf("AHT20 Temperature: %.2f C\r\n", aht20_temperature);
+      printf("AHT20 Humidity: %.2f %%\r\n", aht20_humidity);
+  }
+  else
+  {
+      printf("AHT20 measurement failed: %d\r\n",
+             (int)aht20_read_status);
+  }
+
+  uint8_t bmp280_chip_id = 0;
+  HAL_StatusTypeDef bmp280_id_status;
+
+  bmp280_id_status = BMP280_ReadChipID(&hi2c1, &bmp280_chip_id);
+
+  if (bmp280_id_status == HAL_OK)
+  {
+      printf("BMP280 Chip ID: 0x%02X\r\n", bmp280_chip_id);
+
+      if (bmp280_chip_id == 0x58)
+      {
+          printf("BMP280 chip ID check: PASS\r\n");
+      }
+      else
+      {
+          printf("BMP280 chip ID check: UNEXPECTED ID\r\n");
+      }
+  }
+  else
+  {
+      printf("BMP280 chip ID read failed: %d\r\n",
+             (int)bmp280_id_status);
+  }
 
   arm_rfft_fast_init_f32(&fft_instance, FFT_SIZE);
 
