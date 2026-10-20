@@ -51,6 +51,8 @@ DMA_HandleTypeDef hdma_adc1;
 DAC_HandleTypeDef hdac;
 DMA_HandleTypeDef hdma_dac1;
 
+I2C_HandleTypeDef hi2c1;
+
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim6;
@@ -78,7 +80,6 @@ const osMessageQueueAttr_t frequencyQueue_attributes = {
   .name = "frequencyQueue"
 };
 osMessageQueueId_t adcEventQueueHandle;
-
 /* USER CODE BEGIN PV */
 volatile uint32_t main_counter = 0;
 volatile uint32_t adc_value = 0;
@@ -125,6 +126,7 @@ static void MX_TIM2_Init(void);
 static void MX_DAC_Init(void);
 static void MX_TIM6_Init(void);
 static void MX_TIM3_Init(void);
+static void MX_I2C1_Init(void);
 void StartDefaultTask(void *argument);
 void StartTask02(void *argument);
 
@@ -134,7 +136,11 @@ void ProcessFFT(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+int __io_putchar(int ch)
+{
+    HAL_UART_Transmit(&huart2, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
+    return ch;
+}
 /* USER CODE END 0 */
 
 /**
@@ -173,8 +179,36 @@ int main(void)
   MX_DAC_Init();
   MX_TIM6_Init();
   MX_TIM3_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
-  /* USER CODE BEGIN 2 */
+
+  HAL_StatusTypeDef aht20_status;
+  HAL_StatusTypeDef bmp280_76_status;
+  HAL_StatusTypeDef bmp280_77_status;
+
+  aht20_status = HAL_I2C_IsDeviceReady(&hi2c1,
+                                       (0x38 << 1),
+                                       3,
+                                       100);
+
+  bmp280_76_status = HAL_I2C_IsDeviceReady(&hi2c1,
+                                          (0x76 << 1),
+                                          3,
+                                          100);
+
+  bmp280_77_status = HAL_I2C_IsDeviceReady(&hi2c1,
+                                          (0x77 << 1),
+                                          3,
+                                          100);
+
+  printf("AHT20 (0x38): %s\r\n",
+         (aht20_status == HAL_OK) ? "FOUND" : "NOT FOUND");
+
+  printf("BMP280 (0x76): %s\r\n",
+         (bmp280_76_status == HAL_OK) ? "FOUND" : "NOT FOUND");
+
+  printf("BMP280 (0x77): %s\r\n",
+         (bmp280_77_status == HAL_OK) ? "FOUND" : "NOT FOUND");
 
   arm_rfft_fast_init_f32(&fft_instance, FFT_SIZE);
 
@@ -216,10 +250,10 @@ int main(void)
   /* creation of frequencyQueue */
   frequencyQueueHandle = osMessageQueueNew (4, sizeof(float32_t), &frequencyQueue_attributes);
   adcEventQueueHandle = osMessageQueueNew(
-      8,
-      sizeof(uint32_t),
-      NULL
-  );
+        8,
+        sizeof(uint32_t),
+        NULL);
+
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
   /* USER CODE END RTOS_QUEUES */
@@ -391,6 +425,40 @@ static void MX_DAC_Init(void)
   /* USER CODE BEGIN DAC_Init 2 */
 
   /* USER CODE END DAC_Init 2 */
+
+}
+
+/**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.ClockSpeed = 100000;
+  hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
 
 }
 
@@ -773,10 +841,10 @@ void StartDefaultTask(void *argument)
 
 	        if (length > 0 && length < sizeof(uart_message))
 	        {
-	            HAL_UART_Transmit(&huart2,
+	            /*HAL_UART_Transmit(&huart2,
 	                              (uint8_t *)uart_message,
 	                              (uint16_t)length,
-	                              HAL_MAX_DELAY);
+	                              HAL_MAX_DELAY);*/
 	        }
 	    }
 	}
