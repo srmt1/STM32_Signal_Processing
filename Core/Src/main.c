@@ -239,6 +239,8 @@ int main(void)
              (int)aht20_read_status);
   }
 
+  /* ---------- BMP280 chip ID ---------- */
+
   uint8_t bmp280_chip_id = 0;
   HAL_StatusTypeDef bmp280_id_status;
 
@@ -261,6 +263,163 @@ int main(void)
   {
       printf("BMP280 chip ID read failed: %d\r\n",
              (int)bmp280_id_status);
+  }
+
+
+  /* ---------- BMP280 initialisation ---------- */
+
+  HAL_StatusTypeDef bmp280_init_status;
+
+  bmp280_init_status = BMP280_Init(&hi2c1);
+
+  printf("BMP280 initialisation: %s\r\n",
+         (bmp280_init_status == HAL_OK) ? "OK" : "FAILED");
+
+  if (bmp280_init_status != HAL_OK)
+  {
+      printf("Stopping BMP280 test because initialisation failed.\r\n");
+  }
+  else
+  {
+      /* ---------- Read calibration coefficients ---------- */
+
+      BMP280_Calibration bmp280_cal;
+      HAL_StatusTypeDef bmp280_cal_status;
+
+      bmp280_cal_status = BMP280_ReadCalibration(&hi2c1, &bmp280_cal);
+
+      if (bmp280_cal_status == HAL_OK)
+      {
+          printf("BMP280 Calibration:\r\n");
+
+          printf("T1=%u, T2=%d, T3=%d\r\n",
+                 (unsigned int)bmp280_cal.dig_T1,
+                 (int)bmp280_cal.dig_T2,
+                 (int)bmp280_cal.dig_T3);
+
+          printf("P1=%u, P2=%d, P3=%d\r\n",
+                 (unsigned int)bmp280_cal.dig_P1,
+                 (int)bmp280_cal.dig_P2,
+                 (int)bmp280_cal.dig_P3);
+
+          printf("P4=%d, P5=%d, P6=%d\r\n",
+                 (int)bmp280_cal.dig_P4,
+                 (int)bmp280_cal.dig_P5,
+                 (int)bmp280_cal.dig_P6);
+
+          printf("P7=%d, P8=%d, P9=%d\r\n",
+                 (int)bmp280_cal.dig_P7,
+                 (int)bmp280_cal.dig_P8,
+                 (int)bmp280_cal.dig_P9);
+
+
+          /* ---------- Compare two raw readings ---------- */
+
+          uint32_t raw_pressure_1 = 0;
+          uint32_t raw_temperature_1 = 0;
+          uint32_t raw_pressure_2 = 0;
+          uint32_t raw_temperature_2 = 0;
+
+          HAL_StatusTypeDef raw_status_1;
+          HAL_StatusTypeDef raw_status_2;
+
+          raw_status_1 = BMP280_ReadRawData(
+              &hi2c1,
+              &raw_pressure_1,
+              &raw_temperature_1);
+
+          HAL_Delay(10);
+
+          raw_status_2 = BMP280_ReadRawData(
+              &hi2c1,
+              &raw_pressure_2,
+              &raw_temperature_2);
+
+          if (raw_status_1 == HAL_OK)
+          {
+              printf("Raw reading 1: pressure=%lu, temperature=%lu\r\n",
+                     (unsigned long)raw_pressure_1,
+                     (unsigned long)raw_temperature_1);
+          }
+          else
+          {
+              printf("Raw reading 1 failed: %d\r\n",
+                     (int)raw_status_1);
+          }
+
+          if (raw_status_2 == HAL_OK)
+          {
+              printf("Raw reading 2: pressure=%lu, temperature=%lu\r\n",
+                     (unsigned long)raw_pressure_2,
+                     (unsigned long)raw_temperature_2);
+          }
+          else
+          {
+              printf("Raw reading 2 failed: %d\r\n",
+                     (int)raw_status_2);
+          }
+
+
+          /* ---------- Read compensated temperature ---------- */
+
+          float bmp280_temperature = 0.0f;
+          HAL_StatusTypeDef bmp280_temp_status;
+
+          bmp280_temp_status = BMP280_ReadTemperature(
+              &hi2c1,
+              &bmp280_cal,
+              &bmp280_temperature);
+
+          if (bmp280_temp_status == HAL_OK)
+          {
+              printf("BMP280 Temperature: %.2f C\r\n",
+                     bmp280_temperature);
+          }
+          else
+          {
+              printf("BMP280 temperature read failed: %d\r\n",
+                     (int)bmp280_temp_status);
+          }
+
+
+          /* ---------- Read compensated pressure ---------- */
+
+          float bmp280_pressure_hpa = 0.0f;
+          HAL_StatusTypeDef bmp280_pressure_status;
+
+          /*
+           * ReadTemperature() must run first because it calculates
+           * bmp280_t_fine, which the pressure compensation uses.
+           */
+          if (bmp280_temp_status == HAL_OK)
+          {
+              bmp280_pressure_status = BMP280_ReadPressure(
+                  &hi2c1,
+                  &bmp280_cal,
+                  &bmp280_pressure_hpa);
+
+              if (bmp280_pressure_status == HAL_OK)
+              {
+                  printf("BMP280 Pressure: %.2f hPa\r\n",
+                         bmp280_pressure_hpa);
+              }
+              else
+              {
+                  printf("BMP280 pressure read failed: %d\r\n",
+                         (int)bmp280_pressure_status);
+              }
+          }
+          else
+          {
+              printf("Skipping pressure compensation because "
+                     "temperature reading failed.\r\n");
+          }
+      }
+      else
+      {
+          printf("BMP280 calibration read failed: %d\r\n",
+                 (int)bmp280_cal_status);
+      }
   }
 
   arm_rfft_fast_init_f32(&fft_instance, FFT_SIZE);
