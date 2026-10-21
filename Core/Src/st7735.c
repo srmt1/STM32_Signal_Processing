@@ -273,36 +273,36 @@ static uint8_t ST7735_GetFontIndex(char c)
     }
 }
 
-/* Draw one scaled 5x7 character. */
+/* Draw one 5x7 character using a single SPI pixel-data transfer. */
 static void ST7735_DrawChar(uint16_t x, uint16_t y,
                             char c, uint16_t colour,
                             uint16_t background)
 {
     uint8_t index = ST7735_GetFontIndex(c);
+    uint8_t pixel_data[5U * 7U * 2U];
     uint8_t column;
     uint8_t row;
+    uint16_t offset = 0U;
 
-    for (column = 0U; column < 5U; column++)
+    /* Build the complete character image in RGB565 format. */
+    for (row = 0U; row < 7U; row++)
     {
-        for (row = 0U; row < 7U; row++)
+        for (column = 0U; column < 5U; column++)
         {
             uint16_t pixel_colour =
                 (font5x7[index][column] & (1U << row))
                 ? colour : background;
 
-            ST7735_SetAddressWindow(
-                x + column, y + row,
-                x + column, y + row);
-
-            uint8_t pixel_data[2] =
-            {
-                (uint8_t)(pixel_colour >> 8),
-                (uint8_t)pixel_colour
-            };
-
-            ST7735_WriteData(pixel_data, sizeof(pixel_data));
+            pixel_data[offset++] = (uint8_t)(pixel_colour >> 8);
+            pixel_data[offset++] = (uint8_t)pixel_colour;
         }
     }
+
+    /* Select the complete 5x7 character area. */
+    ST7735_SetAddressWindow(x, y, x + 4U, y + 6U);
+
+    /* Transmit all 35 pixels in one SPI transfer. */
+    ST7735_WriteData(pixel_data, sizeof(pixel_data));
 }
 
 /* Draw a string using 6x8 character cells. */
