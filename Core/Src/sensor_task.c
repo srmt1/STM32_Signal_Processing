@@ -202,6 +202,11 @@ void StartTFTTask(void *argument)
     float frequency_hz;
     char line[24];
 
+    SensorData previous_sensor_data = {0};
+    float previous_frequency_hz = -1.0f;
+    uint8_t sensor_data_valid = 0U;
+    uint8_t frequency_valid = 0U;
+
     (void)argument;
 
     /* Clear the display and show a title. */
@@ -216,51 +221,81 @@ void StartTFTTask(void *argument)
          * Wait for the latest sensor sample.
          * The sensor acquisition task continues independently.
          */
-        if (osMessageQueueGet(tftDataQueueHandle,
-                              &sensor_data,
-                              NULL,
-                              0U) == osOK)
-        {
-            /* AHT20 temperature */
-            (void)snprintf(line, sizeof(line), "AHT T: %.1f C",
-                           sensor_data.aht20_temperature);
+    	if (osMessageQueueGet(tftDataQueueHandle,
+    	                      &sensor_data,
+    	                      NULL,
+    	                      0U) == osOK)
+    	{
+    	    /* Update the display when this is the first reading or
+    	       when a displayed sensor value has changed. */
+    	    if ((sensor_data_valid == 0U) ||
+    	        (sensor_data.aht20_temperature !=
+    	         previous_sensor_data.aht20_temperature))
+    	    {
+    	        (void)snprintf(line, sizeof(line), "AHT T: %.1f C",
+    	                       (double)sensor_data.aht20_temperature);
 
-            ST7735_WriteString(0, 20, line,
-                               ST7735_WHITE, ST7735_BLACK);
+    	        ST7735_WriteString(0, 20, line,
+    	                           ST7735_WHITE, ST7735_BLACK);
+    	    }
 
-            /* AHT20 humidity */
-            (void)snprintf(line, sizeof(line), "HUM: %.1f %%",
-                           sensor_data.aht20_humidity);
+    	    if ((sensor_data_valid == 0U) ||
+    	        (sensor_data.aht20_humidity !=
+    	         previous_sensor_data.aht20_humidity))
+    	    {
+    	        (void)snprintf(line, sizeof(line), "HUM: %.1f %%",
+    	                       (double)sensor_data.aht20_humidity);
 
-            ST7735_WriteString(0, 35, line,
-                               ST7735_GREEN, ST7735_BLACK);
+    	        ST7735_WriteString(0, 35, line,
+    	                           ST7735_GREEN, ST7735_BLACK);
+    	    }
 
-            /* BMP280 temperature */
-            (void)snprintf(line, sizeof(line), "BMP T: %.1f C",
-                           sensor_data.bmp280_temperature);
+    	    if ((sensor_data_valid == 0U) ||
+    	        (sensor_data.bmp280_temperature !=
+    	         previous_sensor_data.bmp280_temperature))
+    	    {
+    	        (void)snprintf(line, sizeof(line), "BMP T: %.1f C",
+    	                       (double)sensor_data.bmp280_temperature);
 
-            ST7735_WriteString(0, 50, line,
-                               ST7735_YELLOW, ST7735_BLACK);
+    	        ST7735_WriteString(0, 50, line,
+    	                           ST7735_YELLOW, ST7735_BLACK);
+    	    }
 
-            /* BMP280 pressure */
-            (void)snprintf(line, sizeof(line), "PRESS: %.1f hPa",
-                           sensor_data.bmp280_pressure_hpa);
+    	    if ((sensor_data_valid == 0U) ||
+    	        (sensor_data.bmp280_pressure_hpa !=
+    	         previous_sensor_data.bmp280_pressure_hpa))
+    	    {
+    	        (void)snprintf(line, sizeof(line), "PRESS: %.1f hPa",
+    	                       (double)sensor_data.bmp280_pressure_hpa);
 
-            ST7735_WriteString(0, 65, line,
-                               ST7735_CYAN, ST7735_BLACK);
-        }
+    	        ST7735_WriteString(0, 65, line,
+    	                           ST7735_CYAN, ST7735_BLACK);
+    	    }
+
+    	    /* Remember the readings we have just displayed. */
+    	    previous_sensor_data = sensor_data;
+    	    sensor_data_valid = 1U;
+    	}
         /* Read the latest available FFT frequency. */
-        if (osMessageQueueGet(tftFrequencyQueueHandle,
-                              &frequency_hz,
-                              NULL,
-                              0U) == osOK)
-        {
-            (void)snprintf(line, sizeof(line), "FREQ: %.1f Hz",
-                           (double)frequency_hz);
+    	/* Read the latest available FFT frequency. */
+    	if (osMessageQueueGet(tftFrequencyQueueHandle,
+    	                      &frequency_hz,
+    	                      NULL,
+    	                      0U) == osOK)
+    	{
+    	    if ((frequency_valid == 0U) ||
+    	        (frequency_hz != previous_frequency_hz))
+    	    {
+    	        (void)snprintf(line, sizeof(line), "FREQ: %.1f Hz",
+    	                       (double)frequency_hz);
 
-            ST7735_WriteString(0, 85, line,
-                               ST7735_WHITE, ST7735_BLACK);
-        }
+    	        ST7735_WriteString(0, 85, line,
+    	                           ST7735_WHITE, ST7735_BLACK);
+
+    	        previous_frequency_hz = frequency_hz;
+    	        frequency_valid = 1U;
+    	    }
+    	}
 
         /* Allow other tasks to run between display checks. */
         osDelay(50U);
