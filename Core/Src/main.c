@@ -120,6 +120,8 @@ arm_rfft_fast_instance_f32 fft_instance;
 
 uint16_t dac_buffer[DAC_BUFFER_SIZE];
 
+osMutexId_t i2c1MutexHandle;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -451,7 +453,12 @@ int main(void)
   osKernelInitialize();
 
   /* USER CODE BEGIN RTOS_MUTEX */
-  /* add mutexes, ... */
+  i2c1MutexHandle = osMutexNew(NULL);
+
+  if (i2c1MutexHandle == NULL)
+  {
+      Error_Handler();
+  }
   /* USER CODE END RTOS_MUTEX */
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
@@ -1099,10 +1106,10 @@ void StartDefaultTask(void *argument)
 
 	        if (length > 0 && length < sizeof(uart_message))
 	        {
-	            /*HAL_UART_Transmit(&huart2,
+	            HAL_UART_Transmit(&huart2,
 	                              (uint8_t *)uart_message,
 	                              (uint16_t)length,
-	                              HAL_MAX_DELAY);*/
+	                              HAL_MAX_DELAY);
 	        }
 	    }
 	}

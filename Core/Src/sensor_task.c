@@ -57,52 +57,57 @@ void StartSensorTask(void *argument)
      */
     for (;;)
     {
-        /* AHT20 temperature and humidity */
-        if (data.aht20_status == HAL_OK)
+        /* Acquire exclusive access to I2C1. */
+        if (osMutexAcquire(i2c1MutexHandle, osWaitForever) == osOK)
         {
-            status = AHT20_Read(
-                &hi2c1,
-                &temperature,
-                &humidity
-            );
+        	/* AHT20 temperature and humidity */
+        	if (data.aht20_status == HAL_OK)
+        	{
+        		status = AHT20_Read(
+        				&hi2c1,
+						&temperature,
+						&humidity
+        		);
 
-            data.aht20_status = status;
+        		data.aht20_status = status;
 
-            if (status == HAL_OK)
-            {
-                data.aht20_temperature = temperature;
-                data.aht20_humidity = humidity;
-            }
+        		if (status == HAL_OK)
+        		{
+        			data.aht20_temperature = temperature;
+        			data.aht20_humidity = humidity;
+        		}
+        	}
+
+        	/* BMP280 temperature and pressure */
+        	if (data.bmp280_status == HAL_OK)
+        	{
+        		status = BMP280_ReadTemperature(
+        				&hi2c1,
+						&bmp280_cal,
+						&temperature
+        		);
+
+        		if (status == HAL_OK)
+        		{
+        			data.bmp280_temperature = temperature;
+
+        			status = BMP280_ReadPressure(
+        					&hi2c1,
+							&bmp280_cal,
+							&pressure_hpa
+        			);
+        		}
+
+        		data.bmp280_status = status;
+
+        		if (status == HAL_OK)
+        		{
+        			data.bmp280_pressure_hpa = pressure_hpa;
+        		}
+        	}
+        	/* Release I2C1 after all sensor transactions. */
+        	osMutexRelease(i2c1MutexHandle);
         }
-
-        /* BMP280 temperature and pressure */
-        if (data.bmp280_status == HAL_OK)
-        {
-            status = BMP280_ReadTemperature(
-                &hi2c1,
-                &bmp280_cal,
-                &temperature
-            );
-
-            if (status == HAL_OK)
-            {
-                data.bmp280_temperature = temperature;
-
-                status = BMP280_ReadPressure(
-                    &hi2c1,
-                    &bmp280_cal,
-                    &pressure_hpa
-                );
-            }
-
-            data.bmp280_status = status;
-
-            if (status == HAL_OK)
-            {
-                data.bmp280_pressure_hpa = pressure_hpa;
-            }
-        }
-
         /* Record when this sample was collected. */
         data.timestamp_ms = HAL_GetTick();
 
