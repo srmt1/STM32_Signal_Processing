@@ -121,6 +121,7 @@ arm_rfft_fast_instance_f32 fft_instance;
 uint16_t dac_buffer[DAC_BUFFER_SIZE];
 
 osMutexId_t i2c1MutexHandle;
+osMutexId_t uartMutexHandle;
 
 /* USER CODE END PV */
 
@@ -456,6 +457,14 @@ int main(void)
   i2c1MutexHandle = osMutexNew(NULL);
 
   if (i2c1MutexHandle == NULL)
+  {
+      Error_Handler();
+  }
+
+  /* Create mutex to protect UART transmissions. */
+  uartMutexHandle = osMutexNew(NULL);
+
+  if (uartMutexHandle == NULL)
   {
       Error_Handler();
   }
@@ -1106,10 +1115,15 @@ void StartDefaultTask(void *argument)
 
 	        if (length > 0 && length < sizeof(uart_message))
 	        {
-	            HAL_UART_Transmit(&huart2,
-	                              (uint8_t *)uart_message,
-	                              (uint16_t)length,
-	                              HAL_MAX_DELAY);
+	        	if (osMutexAcquire(uartMutexHandle, osWaitForever) == osOK)
+	        	{
+	        	    HAL_UART_Transmit(&huart2,
+	        	                      (uint8_t *)uart_message,
+	        	                      (uint16_t)length,
+	        	                      HAL_MAX_DELAY);
+
+	        	    osMutexRelease(uartMutexHandle);
+	        	}
 	        }
 	    }
 	}

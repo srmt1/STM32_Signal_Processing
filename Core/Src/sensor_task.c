@@ -153,36 +153,40 @@ void StartSensorPrintTask(void *argument)
                 NULL,
                 osWaitForever) == osOK)
         {
-            printf("\r\nSensor sample at %lu ms\r\n",
-                   (unsigned long)received_data.timestamp_ms);
+        	if (osMutexAcquire(uartMutexHandle, osWaitForever) == osOK)
+        	{
+        		printf("\r\nSensor sample at %lu ms\r\n",
+        				(unsigned long)received_data.timestamp_ms);
 
-            if (received_data.aht20_status == HAL_OK)
-            {
-                printf("AHT20 Temperature: %.2f C\r\n",
-                       received_data.aht20_temperature);
+        		if (received_data.aht20_status == HAL_OK)
+        		{
+        			printf("AHT20 Temperature: %.2f C\r\n",
+        					received_data.aht20_temperature);
 
-                printf("AHT20 Humidity: %.2f %%\r\n",
-                       received_data.aht20_humidity);
-            }
-            else
-            {
-                printf("AHT20 read failed: %d\r\n",
-                       (int)received_data.aht20_status);
-            }
+        			printf("AHT20 Humidity: %.2f %%\r\n",
+        					received_data.aht20_humidity);
+        		}
+        		else
+        		{
+        			printf("AHT20 read failed: %d\r\n",
+        					(int)received_data.aht20_status);
+        		}
 
-            if (received_data.bmp280_status == HAL_OK)
-            {
-                printf("BMP280 Temperature: %.2f C\r\n",
-                       received_data.bmp280_temperature);
+        		if (received_data.bmp280_status == HAL_OK)
+        		{
+        			printf("BMP280 Temperature: %.2f C\r\n",
+        					received_data.bmp280_temperature);
 
-                printf("BMP280 Pressure: %.2f hPa\r\n",
-                       received_data.bmp280_pressure_hpa);
-            }
-            else
-            {
-                printf("BMP280 read failed: %d\r\n",
-                       (int)received_data.bmp280_status);
-            }
+        			printf("BMP280 Pressure: %.2f hPa\r\n",
+        					received_data.bmp280_pressure_hpa);
+        		}
+        		else
+        		{
+        			printf("BMP280 read failed: %d\r\n",
+        					(int)received_data.bmp280_status);
+        		}
+        		osMutexRelease(uartMutexHandle);
+        	}
         }
     }
 }

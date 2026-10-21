@@ -30,6 +30,7 @@ typedef struct
 /* FreeRTOS queue handle */
 extern osMessageQueueId_t sensorDataQueueHandle;
 extern osMutexId_t i2c1MutexHandle;
+extern osMutexId_t uartMutexHandle;
 
 /* Sensor acquisition task */
 void StartSensorTask(void *argument);
