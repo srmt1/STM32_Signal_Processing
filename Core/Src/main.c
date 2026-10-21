@@ -29,6 +29,7 @@
 #include "queue.h"
 #include "aht20.h"
 #include "bmp280.h"
+#include "sensor_task.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -82,6 +83,9 @@ const osMessageQueueAttr_t frequencyQueue_attributes = {
   .name = "frequencyQueue"
 };
 osMessageQueueId_t adcEventQueueHandle;
+osMessageQueueId_t sensorDataQueueHandle;
+osThreadId_t sensorTaskHandle;
+osThreadId_t sensorPrintTaskHandle;
 /* USER CODE BEGIN PV */
 volatile uint32_t main_counter = 0;
 volatile uint32_t adc_value = 0;
@@ -458,6 +462,7 @@ int main(void)
   /* start timers, add new ones, ... */
   /* USER CODE END RTOS_TIMERS */
 
+  /* USER CODE BEGIN RTOS_QUEUES */
   /* Create the queue(s) */
   /* creation of frequencyQueue */
   frequencyQueueHandle = osMessageQueueNew (4, sizeof(float32_t), &frequencyQueue_attributes);
@@ -465,10 +470,18 @@ int main(void)
         8,
         sizeof(uint32_t),
         NULL);
-
-  /* USER CODE BEGIN RTOS_QUEUES */
-  /* add queues, ... */
+  sensorDataQueueHandle = osMessageQueueNew(
+      4,
+      sizeof(SensorData),
+      NULL
+  );
+  if (sensorDataQueueHandle == NULL)
+  {
+      Error_Handler();
+  }
   /* USER CODE END RTOS_QUEUES */
+
+  /* USER CODE BEGIN RTOS_THREADS */
 
   /* Create the thread(s) */
   /* creation of uartTask */
@@ -477,8 +490,41 @@ int main(void)
   /* creation of fftTask */
   fftTaskHandle = osThreadNew(StartTask02, NULL, &fftTask_attributes);
   fftTaskNativeHandle = (TaskHandle_t)fftTaskHandle;
-  /* USER CODE BEGIN RTOS_THREADS */
-  /* add threads, ... */
+
+  const osThreadAttr_t sensorTask_attributes = {
+      .name = "SensorTask",
+      .stack_size = 1024,
+      .priority = osPriorityNormal
+  };
+
+  sensorTaskHandle = osThreadNew(
+      StartSensorTask,
+      NULL,
+      &sensorTask_attributes
+  );
+
+  if (sensorTaskHandle == NULL)
+  {
+      Error_Handler();
+  }
+
+  const osThreadAttr_t sensorPrintTask_attributes = {
+      .name = "SensorPrintTask",
+      .stack_size = 1024,
+      .priority = osPriorityBelowNormal
+  };
+
+  sensorPrintTaskHandle = osThreadNew(
+      StartSensorPrintTask,
+      NULL,
+      &sensorPrintTask_attributes
+  );
+
+  if (sensorPrintTaskHandle == NULL)
+  {
+      Error_Handler();
+  }
+
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
