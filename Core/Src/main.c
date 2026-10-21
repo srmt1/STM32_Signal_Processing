@@ -84,6 +84,7 @@ const osThreadAttr_t fftTask_attributes = {
 };
 /* Definitions for frequencyQueue */
 osMessageQueueId_t frequencyQueueHandle;
+osMessageQueueId_t tftFrequencyQueueHandle;
 const osMessageQueueAttr_t frequencyQueue_attributes = {
   .name = "frequencyQueue"
 };
@@ -497,6 +498,13 @@ int main(void)
   /* Create the queue(s) */
   /* creation of frequencyQueue */
   frequencyQueueHandle = osMessageQueueNew (4, sizeof(float32_t), &frequencyQueue_attributes);
+  tftFrequencyQueueHandle = osMessageQueueNew(
+      4, sizeof(float32_t), NULL);
+
+  if (tftFrequencyQueueHandle == NULL)
+  {
+      Error_Handler();
+  }
   adcEventQueueHandle = osMessageQueueNew(
         8,
         sizeof(uint32_t),
@@ -1271,6 +1279,10 @@ void StartTask02(void *argument)
     	            0,
     	            0
     	        );
+    	        (void)osMessageQueuePut(tftFrequencyQueueHandle,
+    	                                &frequency,
+    	                                0U,
+    	                                0U);
 
     	        fft_half_processed_count++;
     	    }
@@ -1296,6 +1308,10 @@ void StartTask02(void *argument)
     	            0,
     	            0
     	        );
+    	        (void)osMessageQueuePut(tftFrequencyQueueHandle,
+    	                                &frequency,
+    	                                0U,
+    	                                0U);
 
     	        fft_full_processed_count++;
     	    }

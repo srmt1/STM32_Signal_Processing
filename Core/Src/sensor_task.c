@@ -199,6 +199,7 @@ void StartSensorPrintTask(void *argument)
 void StartTFTTask(void *argument)
 {
     SensorData sensor_data;
+    float frequency_hz;
     char line[24];
 
     (void)argument;
@@ -218,7 +219,7 @@ void StartTFTTask(void *argument)
         if (osMessageQueueGet(tftDataQueueHandle,
                               &sensor_data,
                               NULL,
-                              osWaitForever) == osOK)
+                              0U) == osOK)
         {
             /* AHT20 temperature */
             (void)snprintf(line, sizeof(line), "AHT T: %.1f C",
@@ -248,5 +249,20 @@ void StartTFTTask(void *argument)
             ST7735_WriteString(0, 65, line,
                                ST7735_CYAN, ST7735_BLACK);
         }
+        /* Read the latest available FFT frequency. */
+        if (osMessageQueueGet(tftFrequencyQueueHandle,
+                              &frequency_hz,
+                              NULL,
+                              0U) == osOK)
+        {
+            (void)snprintf(line, sizeof(line), "FREQ: %.1f Hz",
+                           (double)frequency_hz);
+
+            ST7735_WriteString(0, 85, line,
+                               ST7735_WHITE, ST7735_BLACK);
+        }
+
+        /* Allow other tasks to run between display checks. */
+        osDelay(50U);
     }
 }
