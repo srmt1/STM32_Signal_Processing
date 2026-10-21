@@ -12,6 +12,7 @@
 #include "main.h"
 
 #include <stdio.h>
+#include "st7735.h"
 
 /* Task function declarations */
 void StartSensorTask(void *argument);
@@ -126,6 +127,10 @@ void StartSensorTask(void *argument)
              * The next iteration will try again.
              */
         }
+        (void)osMessageQueuePut(tftDataQueueHandle,
+                                &data,
+                                0U,
+                                0U);
 
         /* Schedule the next sample at a fixed 1-second interval. */
         next_sample_tick += sample_period_ms;
@@ -187,6 +192,61 @@ void StartSensorPrintTask(void *argument)
         		}
         		osMutexRelease(uartMutexHandle);
         	}
+        }
+    }
+}
+
+void StartTFTTask(void *argument)
+{
+    SensorData sensor_data;
+    char line[24];
+
+    (void)argument;
+
+    /* Clear the display and show a title. */
+    ST7735_FillScreen(ST7735_BLACK);
+
+    ST7735_WriteString(0, 0, "SENSOR MONITOR",
+                      ST7735_CYAN, ST7735_BLACK);
+
+    for (;;)
+    {
+        /*
+         * Wait for the latest sensor sample.
+         * The sensor acquisition task continues independently.
+         */
+        if (osMessageQueueGet(tftDataQueueHandle,
+                              &sensor_data,
+                              NULL,
+                              osWaitForever) == osOK)
+        {
+            /* AHT20 temperature */
+            (void)snprintf(line, sizeof(line), "AHT T: %.1f C",
+                           sensor_data.aht20_temperature);
+
+            ST7735_WriteString(0, 20, line,
+                               ST7735_WHITE, ST7735_BLACK);
+
+            /* AHT20 humidity */
+            (void)snprintf(line, sizeof(line), "HUM: %.1f %%",
+                           sensor_data.aht20_humidity);
+
+            ST7735_WriteString(0, 35, line,
+                               ST7735_GREEN, ST7735_BLACK);
+
+            /* BMP280 temperature */
+            (void)snprintf(line, sizeof(line), "BMP T: %.1f C",
+                           sensor_data.bmp280_temperature);
+
+            ST7735_WriteString(0, 50, line,
+                               ST7735_YELLOW, ST7735_BLACK);
+
+            /* BMP280 pressure */
+            (void)snprintf(line, sizeof(line), "PRESS: %.1f hPa",
+                           sensor_data.bmp280_pressure_hpa);
+
+            ST7735_WriteString(0, 65, line,
+                               ST7735_CYAN, ST7735_BLACK);
         }
     }
 }
