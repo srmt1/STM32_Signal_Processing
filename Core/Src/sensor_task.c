@@ -127,10 +127,22 @@ void StartSensorTask(void *argument)
              * The next iteration will try again.
              */
         }
-        (void)osMessageQueuePut(tftDataQueueHandle,
-                                &data,
-                                0U,
-                                0U);
+
+        /* Keep only the newest sensor sample for the TFT. */
+        if (osMessageQueuePut(tftDataQueueHandle,
+                              &data,
+                              0U,
+                              0U) != osOK)
+        {
+            /* Queue is full: discard the older pending sample. */
+            (void)osMessageQueueReset(tftDataQueueHandle);
+
+            /* Store the newest sample without blocking. */
+            (void)osMessageQueuePut(tftDataQueueHandle,
+                                    &data,
+                                    0U,
+                                    0U);
+        }
 
         /* Schedule the next sample at a fixed 1-second interval. */
         next_sample_tick += sample_period_ms;
@@ -277,25 +289,26 @@ void StartTFTTask(void *argument)
     	    sensor_data_valid = 1U;
     	}
         /* Read the latest available FFT frequency. */
-    	/* Read the latest available FFT frequency. */
-    	if (osMessageQueueGet(tftFrequencyQueueHandle,
-    	                      &frequency_hz,
-    	                      NULL,
-    	                      0U) == osOK)
-    	{
-    	    if ((frequency_valid == 0U) ||
-    	        (frequency_hz != previous_frequency_hz))
-    	    {
-    	        (void)snprintf(line, sizeof(line), "FREQ: %.1f Hz",
-    	                       (double)frequency_hz);
+        /* Discard older pending readings; keep the newest one. */
+        while (osMessageQueueGet(tftFrequencyQueueHandle,
+                                 &frequency_hz,
+                                 NULL,
+                                 0U) == osOK)
+        {
+            /* frequency_hz is overwritten with each newer reading. */
+        }
+        if ((frequency_valid == 0U) ||
+        		(frequency_hz != previous_frequency_hz))
+        {
+        	(void)snprintf(line, sizeof(line), "FREQ: %.1f Hz",
+        			(double)frequency_hz);
 
-    	        ST7735_WriteString(0, 85, line,
-    	                           ST7735_WHITE, ST7735_BLACK);
+        	ST7735_WriteString(0, 85, line,
+        			ST7735_WHITE, ST7735_BLACK);
 
-    	        previous_frequency_hz = frequency_hz;
-    	        frequency_valid = 1U;
-    	    }
-    	}
+        	previous_frequency_hz = frequency_hz;
+        	frequency_valid = 1U;
+        }
 
         /* Allow other tasks to run between display checks. */
         osDelay(50U);
